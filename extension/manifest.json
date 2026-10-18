@@ -1,0 +1,64 @@
+{
+  "update_url": "https://clients2.google.com/service/update2/crx",
+  "manifest_version": 3,
+  "name": "HelpMeChat",
+  "version": "0.3.3",
+  "description": "Get AI reply suggestions in your own style on WhatsApp Web. Public free preview with limited credits.",
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://helpmechat-api-prep.prajval-2029.workers.dev/*"
+  ],
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "HelpMeChat",
+    "default_icon": {
+      "16": "public/icons/icon16.png",
+      "48": "public/icons/icon48.png",
+      "128": "public/icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "src/options/index.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/whatsapp.ts-loader-Q-5kkHf_.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "css": [
+        "src/content/panel.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "public/icons/icon16.png",
+    "48": "public/icons/icon48.png",
+    "128": "public/icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "resources": [
+        "assets/*",
+        "assets/conversation-JZAHGSK4.js",
+        "assets/whatsapp.ts-DgvijBRI.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}
