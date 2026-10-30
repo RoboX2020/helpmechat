@@ -13,6 +13,13 @@ import type {
 } from "../lib/types";
 import { copyToClipboard, debugComposeSend, insertIntoWhatsAppCompose, openMediaUrl, pasteAndSend, sendWhatsAppMessage } from "./compose";
 
+// ============================================================================
+// whatsapp.ts - the content script: code the browser injects INTO the WhatsApp
+// Web page. It watches the open chat (via MutationObservers on the page's
+// HTML), reads the visible messages from the page, asks the background worker
+// for reply suggestions, and draws the floating HelpMeChat panel. Everything
+// here runs inside web.whatsapp.com's tab - it can only see what YOU can see.
+// ============================================================================
 const PANEL_ID = "helpmechat-panel-root";
 const POS_KEY = "helpmechatPanelPos";
 
@@ -507,6 +514,9 @@ async function runQuickChat(
   }
 }
 
+// The main pipeline: read the open chat -> decide if anything changed ->
+// ask the background worker for suggestions -> paint them into the panel.
+// Each early-return below is one honest reason the panel can't help right now.
 async function fetchSuggestions(force = false): Promise<void> {
   const contactName = getContactName();
   if (!contactName) {
@@ -542,6 +552,9 @@ async function fetchSuggestions(force = false): Promise<void> {
 
   setContext(state.turnLabel);
 
+  // De-dup: a short fingerprint of "who + latest messages". If nothing new was
+  // said since the last fetch, skip the AI call entirely (saves quota and
+  // avoids flickering the panel). force=true bypasses this (manual refresh).
   const triggerKey = conversationTriggerKey(contactName, messages) ?? "";
   if (!force && triggerKey === lastTriggerKey) return;
 
@@ -587,6 +600,9 @@ async function fetchSuggestions(force = false): Promise<void> {
   }
 }
 
+// Debounce: WhatsApp's page mutates constantly (typing indicators, read ticks,
+// every keystroke of the OTHER person). Rather than react to every DOM change,
+// wait 350 ms of quiet before re-checking - one update per burst of activity.
 function scheduleChatUpdate(): void {
   if (chatUpdateTimer) clearTimeout(chatUpdateTimer);
   chatUpdateTimer = setTimeout(() => {
@@ -612,6 +628,8 @@ function onChatUpdate(): void {
   const state = analyzeConversation(contactName, messages);
 
   if (quickChatEnabled && state) {
+    // HARD RULE: auto-reply only ever ANSWERS. If you spoke last, Quick Chat
+    // stands down - no matter how long they take, it never double-texts.
     if (state.replyMode === "follow_up_mine") {
       lastTriggerKey = key;
       setContext("Quick chat · waiting", "You spoke last — no auto follow-ups");
@@ -619,12 +637,16 @@ function onChatUpdate(): void {
       return;
     }
 
+    // They said something new: auto-reply once (lastQuickChatKey de-dups).
     if (state.replyMode === "reply_to_them" && key !== lastQuickChatKey) {
       void runQuickChat(contactName, messages, state, key);
       return;
     }
   }
 
+  // An AI call is already in flight: remember that a newer conversation state
+  // arrived, and let the in-flight call's finally-block re-fetch afterwards
+  // (prevents two overlapping Gemini calls racing each other).
   if (isLoading || quickChatBusy) {
     pendingFetch = true;
     return;
@@ -633,6 +655,12 @@ function onChatUpdate(): void {
   void fetchSuggestions();
 }
 
+// Two watchers on the live page:
+//   1. #main (the chat pane): fires on every message/typing change -> debounced
+//      re-check via scheduleChatUpdate.
+//   2. #app (the whole app shell): catches SWITCHING to a different chat - then
+//      the old chat's fingerprint is reset so the new chat always gets fresh
+//      suggestions.
 function observeChat(): void {
   const main = document.querySelector("#main") ?? document.body;
   new MutationObserver(() => scheduleChatUpdate()).observe(main, {
