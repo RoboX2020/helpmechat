@@ -1,3 +1,8 @@
+// ============================================================================
+// conversation.ts - reads the scraped messages and decides "where is this
+// conversation?": who spoke last (reply_to_them vs follow_up_mine), how formal
+// it is, and builds the compact thread text the AI prompts are fed.
+// ============================================================================
 import type { ConversationState, InformalityLevel, LiveMessage, ReplyMode } from "./types";
 
 export type { ConversationState, InformalityLevel, ReplyMode };

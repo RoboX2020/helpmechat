@@ -1,3 +1,9 @@
+// ============================================================================
+// parser.ts - turns an exported WhatsApp .txt chat file into structured
+// messages. Handles both Android and iOS export formats (they timestamp
+// differently), multi-line messages, and system lines ("messages are
+// end-to-end encrypted") which are skipped.
+// ============================================================================
 import type { ChatMessage, ParsedChatExport } from "./types";
 
 /** WhatsApp export line: [DD/MM/YYYY, HH:MM:SS] Name: Message */

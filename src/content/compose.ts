@@ -1,4 +1,10 @@
-/** WhatsApp Web compose + send — Lexical-aware, single insert, reliable send. */
+// ============================================================================
+// compose.ts - putting text INTO WhatsApp Web. The compose box is not a plain
+// <input>: it's a Lexical rich-text editor, so setting .value does nothing -
+// text must be inserted through the editor's own events (Lexical-aware, single
+// insert, reliable send). Also rate-limits inserts and can auto-send.
+// ============================================================================
+
 
 let lastInsertAt = 0;
 let lastInsertText = "";

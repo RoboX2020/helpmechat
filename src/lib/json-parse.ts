@@ -1,4 +1,11 @@
-/** Tolerant parsing for LLM JSON — handles broken strings, wrong shapes, truncation. */
+// ============================================================================
+// json-parse.ts - tolerant parsing for LLM JSON. AI models frequently return
+// almost-JSON: truncated output, smart quotes, trailing commas, extra prose
+// around the object. This file salvages what it can (handles broken strings,
+// wrong shapes, truncation) so a sloppy model response still yields usable
+// suggestions instead of an error screen.
+// ============================================================================
+
 
 export interface ParsedSuggestionJson {
   relationship?: string;

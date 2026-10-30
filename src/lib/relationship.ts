@@ -1,3 +1,9 @@
+// ============================================================================
+// relationship.ts - guesses the human context: the likely relationship vibe
+// (friend, crush, family...), the current situation (angry, flirty, planning,
+// apology needed...), and language mix (English/Hinglish) - all used to brief
+// the AI so replies sound right for THIS person, not generic.
+// ============================================================================
 import type { LiveMessage } from "./types";
 
 export type NameGenderHint = "likely_male" | "likely_female" | "unknown";
