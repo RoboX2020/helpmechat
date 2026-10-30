@@ -18,6 +18,14 @@ import type {
 } from "./types";
 import { formatMessagesForPrompt } from "./parser";
 
+// ============================================================================
+// ai.ts - everything Gemini: turns your exported chats into a communication
+// profile (analyzeExports), writes 5 reply suggestions for the live chat
+// (getReplySuggestions), and writes the single safe auto-reply for Quick Chat
+// mode (getQuickChatReply). The delicate parts: a model FALLBACK chain (try
+// models in order when one is overloaded), honest error messages, and defensive
+// parsing (json-parse.ts) because AI output is never perfectly formatted.
+// ============================================================================
 interface GeminiResponse {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
@@ -28,6 +36,10 @@ interface GeminiResponse {
 
 import { parseProfileJson, parseQuickChatJson, parseSuggestionJson, normalizeReplyList } from "./json-parse";
 
+// Is this failure worth retrying on the next model? Only temporary overload
+// conditions: rate limit (429), server errors (5xx), or the various ways
+// Gemini's error text says "busy". Permanent problems (bad key, bad request)
+// are NOT retryable - they would fail identically on every model.
 function isRetryableError(status: number, message: string): boolean {
   if ([429, 500, 503, 504].includes(status)) return true;
   const m = message.toLowerCase();
@@ -58,6 +70,8 @@ async function callGeminiOnce(
   };
   if (maxOutputTokens) generationConfig.maxOutputTokens = maxOutputTokens;
 
+  // AbortController + a 45-second fuse: if Gemini hangs, cancel the request
+  // and turn it into a readable timeout error instead of a spinner forever.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
 
@@ -94,6 +108,8 @@ async function callGeminiOnce(
   const text = candidate?.content?.parts?.[0]?.text?.trim();
   const reason = candidate?.finishReason ?? "";
 
+  // Gemini refused on safety grounds: the chat content tripped a filter.
+  // Surface that honestly instead of pretending the AI had nothing to say.
   if (reason === "SAFETY" || reason === "BLOCKLIST") {
     throw new Error("Response blocked — try a different chat");
   }
@@ -102,6 +118,10 @@ async function callGeminiOnce(
   return text;
 }
 
+// Try the configured Gemini models in priority order. If one is overloaded
+// (a retryable error), move on to the next; a non-retryable error, or running
+// out of models, surfaces to the user. This is what keeps suggestions working
+// when the free tier's popular model is saturated.
 async function callGeminiWithFallback(
   systemPrompt: string,
   userPrompt: string,
@@ -343,6 +363,8 @@ export async function getReplySuggestions(
     snapshot.state ?? analyzeConversation(snapshot.contactName, snapshot.messages);
   if (!state) return { replies: [], contextLabel: "", coach: [] };
 
+  // Two different writing tasks, two prompts: REPLYING to their last message
+  // vs FOLLOWING UP when YOU spoke last (a nudge, not an answer).
   const isFollowUp = state.replyMode === "follow_up_mine";
   const userPrompt = isFollowUp
     ? buildFollowUpPrompt(snapshot, state, profile, preferenceHint)
@@ -359,6 +381,9 @@ export async function getReplySuggestions(
   let parsed = parseSuggestionJson(raw);
   let replies = parseRepliesFromRaw(raw);
 
+  // The AI sometimes ignores the format instructions. Rescue pass: retry once
+  // with a much shorter, plainer prompt (less room for it to get creative with
+  // structure) before giving up.
   if (replies.length === 0) {
     const shortPrompt = `${isFollowUp ? "FOLLOW-UP: ME spoke last, write 5 more messages from ME." : `REPLY TO ${snapshot.contactName}:`}\nTheir/latest context:\n${state.pendingBlock}\n\nThread tail:\n${formatThreadForAI(snapshot.contactName, snapshot.messages.slice(-8))}`;
 
@@ -440,6 +465,8 @@ export async function getQuickChatReply(
 
   const userPrompt = buildQuickChatPrompt(snapshot, state, profile, preferenceHint);
 
+  // Lower temperature (0.75) and token budget than suggestions: Quick Chat
+  // SENDS this automatically, so we trade creativity for predictability.
   let raw = await callGeminiWithFallback(
     QUICK_CHAT_SYSTEM,
     userPrompt,
@@ -452,6 +479,9 @@ export async function getQuickChatReply(
   try {
     parsed = parseQuickChatJson(raw);
   } catch {
+    // Same rescue pattern as suggestions: ultra-plain retry on parse failure.
+    // For auto-send this matters double - a malformed answer must never reach
+    // the chat as-is.
     raw = await callGeminiWithFallback(
       `Return ONLY: {"reply":"one safe WhatsApp message from ME"}`,
       `Reply to ${snapshot.contactName}: ${state.pendingBlock}\nNo commitments. Excuses OK.`,
